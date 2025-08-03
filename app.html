@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Shin-welltronics key tag</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 2em;
+      background: #f9f9f9;
+    }
+    h1 {
+      color: #2a3590;
+      font-size: 2em;
+      margin-bottom: 0.5em;
+    }
+    .status {
+      margin: 1em 0;
+      font-weight: bold;
+    }
+    button {
+      margin-right: 1em;
+      padding: 0.6em 1.2em;
+      font-size: 1em;
+      cursor: pointer;
+      border-radius: 5px;
+      border: none;
+      background: #2a3590;
+      color: white;
+      transition: background 0.2s;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    #stopBeepBtn {
+      background: #AA2222;
+    }
+  </style>
+</head>
+<body>
+  <h1>Shin-welltronics key tag</h1>
+  <div class="status" id="status">Status: Not Connected</div>
+  <button id="connectBtn">Connect &amp; Scan</button>
+  <button id="stopBeepBtn" disabled>Stop Beep</button>
+
+  <script>
+    let device = null;
+    let server = null;
+    let beepingInterval = null;
+    let audioContext = null;
+
+    const statusElem = document.getElementById('status');
+    const connectBtn = document.getElementById('connectBtn');
+    const stopBeepBtn = document.getElementById('stopBeepBtn');
+
+    async function connectBLE() {
+      try {
+        statusElem.textContent = 'Status: Scanning for BLE Devices...';
+        // Filter: Accept all devices but you can specify filters or name here
+        device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [] // Add service UUIDs if you want specific features
+        });
+        device.addEventListener('gattserverdisconnected', onDisconnected);
+
+        server = await device.gatt.connect();
+        statusElem.textContent = 'Status: Connected to ' + (device.name || 'Unknown device');
+      } catch (err) {
+        statusElem.textContent = 'Status: Error or Scan Cancelled';
+        device = null;
+        server = null;
+      }
+    }
+
+    function onDisconnected() {
+      statusElem.textContent = 'Status: Disconnected (Out of Range?) - Beeping!';
+      startContinuousBeep();
+      stopBeepBtn.disabled = false;
+      connectBtn.disabled = false;
+    }
+
+    function startContinuousBeep() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (beepingInterval) return;
+      const beep = () => {
+        const duration = 200; // ms
+        const frequency = 440; // Hz
+        const volume = 1.0;
+
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.type = "square";
+        oscillator.frequency.value = frequency;
+        gain.gain.value = volume;
+
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + duration / 1000);
+
+        oscillator.onended = () => gain.disconnect();
+      };
+      beep();
+      beepingInterval = setInterval(beep, 350);
+    }
+
+    function stopContinuousBeep() {
+      if (beepingInterval) {
+        clearInterval(beepingInterval);
+        beepingInterval = null;
+        statusElem.textContent = 'Status: Beep Stopped. Please reconnect your key tag!';
+        stopBeepBtn.disabled = true;
+      }
+    }
+
+    connectBtn.onclick = function() {
+      connectBtn.disabled = true;
+      stopBeepBtn.disabled = true;
+      connectBLE().then(() => {
+        // Ready; waiting for disconnect...
+      }).catch(() => {
+        connectBtn.disabled = false;
+      });
+    };
+
+    stopBeepBtn.onclick = stopContinuousBeep;
+
+    // Optional: Warn if Bluetooth unavailable
+    if (!navigator.bluetooth) {
+      statusElem.textContent = 'Status: Web Bluetooth not supported on this browser/device!';
+      connectBtn.disabled = true;
+    }
+  </script>
+</body>
+</html>
